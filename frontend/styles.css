@@ -1,0 +1,94 @@
+html, body {
+	margin: 0;
+	text-align: center;
+}
+
+body {
+	padding: 1em 0;
+	width: 100%;
+	transition: 0.3s box-shadow ease-in-out;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: space-between;
+	background: #f5f5f5;
+	color: #212529;
+}
+
+label {
+	text-decoration: underline;
+}
+
+body.dragover {
+	box-shadow: 0 0 10px 10px #eee inset
+}
+
+hr {
+	width: 50%;
+	margin: 1.5em auto;
+}
+
+#dropzone.uploading > #prompt {
+	display: none;
+}
+
+#form {
+	display: none;
+}
+
+#error {
+	color: red;
+}
+
+@keyframes transform-background {
+	from {
+		background-position-x: 0;
+	}
+	to {
+		background-position-x: 100%;
+	}
+}
+
+.file-drop-area {
+	position: relative;
+	display: flex;
+	align-items: center;
+	width: 450px;
+	max-width: 100%;
+	padding: 25px;
+	border: 2px dashed gray;
+	border-radius: 10px;
+	transition: 0.2s;
+  }
+  
+  .choose-file-button {
+	flex-shrink: 0;
+	background-color: #113b6c;
+	color:white;
+	border: 2px solid gray;
+	border-radius: 20px;
+	padding: 8px 15px;
+	margin-right: 10px;
+	font-size: 12px;
+	text-transform: uppercase;
+  }
+  
+  .file-message {
+	font-size: small;
+	font-weight: 300;
+	line-height: 1.4;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+  }
+  
+  .file-input {
+	position: absolute;
+	left: 0;
+	top: 0;
+	height: 100%;
+	width: 100%;
+	cursor: pointer;
+	opacity: 0;
+	
+  }
