@@ -1,10 +1,10 @@
 package routes
 
 import (
-	"github.com/istefanini/iibb-import/controllers"
+	"iibb-imports/controllers"
 
 	"github.com/gin-gonic/gin"
-	"github.com/istefanini/iibb-import/middleware"
+	"iibb-imports/middleware"
 )
 
 func CreateRoutes(r *gin.Engine) {

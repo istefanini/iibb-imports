@@ -8,11 +8,11 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/istefanini/iibb-import/models"
+	"iibb-imports/models"
 
 	"github.com/gin-gonic/gin"
 	_ "github.com/go-sql-driver/mysql"
-	"github.com/istefanini/iibb-import/infra"
+	"iibb-imports/infra"
 )
 
 func PostPayment(c *gin.Context) {

@@ -3,8 +3,8 @@ package main
 import (
 	"flag"
 	"fmt"
-	"iibb-import/infra"
-	"iibb-import/routes"
+	"iibb-imports/infra"
+	"iibb-imports/routes"
 	"io"
 	"log"
 	"net/http"
