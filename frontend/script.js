@@ -4,6 +4,7 @@ var form = document.getElementById("form");
 var uploads = document.getElementById("uploads");
 var infoTemplate = document.getElementById("info");
 var errors = document.getElementById("error");
+var getInfoRows = document.getElementById("getInfoRows");
 
 // Handle UI Updates
 function addEventsListener(element, events, func, prop) {
@@ -29,6 +30,10 @@ addEventsListener(dropzone, ['drop'], (e) => {
 addEventsListener(form, ['change'], (e) => {
 	handleFiles(e.target.files);
 });
+
+addEventsListener(getInfoRows, 'click', (e) => {
+	getInfo();
+})
 
 function handleFiles(files) {
 	dropzone.classList.add('uploading');
@@ -78,5 +83,11 @@ function handleFiles(files) {
 		xhr.setRequestHeader('X-File-Name', file.name);
 		xhr.send(file);
 	}
+}
+
+function getInfo(){
+	let xhr = new XMLHttpRequest();
+	// Send Request
+	xhr.open('GET', '/getInfoRows');
 }
 

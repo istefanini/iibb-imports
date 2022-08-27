@@ -63,8 +63,8 @@ hr {
   
   .choose-file-button {
 	flex-shrink: 0;
-	background-color: #113b6c;
-	color:white;
+	background-color: #cfe2ff;
+	color:black;
 	border: 2px solid gray;
 	border-radius: 20px;
 	padding: 8px 15px;
@@ -91,4 +91,8 @@ hr {
 	cursor: pointer;
 	opacity: 0;
 	
+  }
+
+  .bg-progress-bar{
+	background-color: #cfe2ff !important;
   }

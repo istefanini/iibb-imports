@@ -1,47 +1,56 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"iibb-imports/infra"
-	"iibb-imports/routes"
 	"io"
 	"log"
 	"net/http"
 	"os"
+	"text/template"
 	"time"
 
 	rice "github.com/GeertJohan/go.rice"
 	"github.com/fatih/color"
-	"github.com/gin-gonic/gin"
 	"github.com/gosuri/uiprogress"
+	"github.com/subosito/gotenv"
 )
 
+var plantillas = template.Must(template.ParseGlob("frontend/*"))
+
+var bks = make([]*RowsData, 0)
+
 var (
-	listen          = flag.String("listen", ":8080", "The address to run the web service on.")
-	path            = flag.String("path", "./uploads", "The path files are saved to. The file name is provided by the client.")
-	disableColor    = false
-	disableProgress = false
+	listen          = ":" + os.Getenv("API_PORT")
+	path            = os.Getenv("PATH_UPLOADS")
+	disableColor    = flag.Bool("no-color", false, "Disable color output.")
+	disableProgress = flag.Bool("no-progress", false, "Disable progress bars.")
 )
 
 var bars *uiprogress.Progress
 
-func main() {
+func init() {
+	bks := make([]RowsData, 0)
+	fmt.Println(bks)
+	_ = gotenv.Load(".env")
+	listen = ":" + os.Getenv("API_PORT")
+	path = os.Getenv("PATH_UPLOADS")
+}
 
-	// Setup color
+func main() {
 	flag.Parse()
-	if disableColor {
+	if *disableColor {
 		color.NoColor = true
 	}
 
 	// Setup progress bars
-	if !disableProgress {
+	if !*disableProgress {
 		bars = uiprogress.New()
 		bars.Start()
 	}
 
-	// Setup Server
-	// setup database
 	infra.SqlConf = &infra.DBData{
 		DB_DRIVER:   os.Getenv("DB_DRIVER"),
 		DB_USER:     os.Getenv("DB_USERNAME"),
@@ -54,23 +63,20 @@ func main() {
 	infra.DbPayment = infra.ConnectDB()
 	defer infra.DbPayment.Close()
 
-	gin.SetMode(gin.ReleaseMode)
-	r := gin.Default()
-	routes.CreateRoutes(r)
-	serverPort := os.Getenv("API_PORT")
-	_ = r.Run(":" + serverPort)
+	// Setup Server
+	mux := http.NewServeMux()
 
 	// Serve static files with rice for portability
 	staticFiles := rice.MustFindBox("frontend").HTTPBox()
 	mux.Handle("/", http.FileServer(staticFiles))
-
-	// Handle form posts
+	mux.HandleFunc("/healthcheck", infra.Healthcheck)
+	mux.HandleFunc("/inicio", Inicio)
 	mux.HandleFunc("/send", func(rw http.ResponseWriter, r *http.Request) {
 		defer r.Body.Close()
 
 		fileName := r.Header.Get("X-File-Name")
 		if fileName == "" {
-			log.Print(color.RedString("File name not provided"))
+			log.Printf(color.RedString("File name not provided"))
 			rw.WriteHeader(http.StatusBadRequest)
 			return
 		}
@@ -101,25 +107,35 @@ func main() {
 			return
 		}
 
-		if disableProgress {
+		if *disableProgress {
 			log.Printf("Wrote "+color.CyanString("%d")+" bytes to file "+color.CyanString("%s"), written, fileName)
 		}
 	})
 
 	s := &http.Server{
-		Addr:    *listen,
+		Addr:    listen,
 		Handler: mux,
 	}
 
-	err := os.Chdir(*path)
+	err := os.Chdir(path)
 	if err != nil {
-		log.Printf(color.RedString("Failed to change to %s, %v"), *path, err)
+		log.Printf(color.RedString("Failed to change to %s, %v"), path, err)
 		return
 	}
 
-	log.Printf("Starting server on %s", color.CyanString(*listen))
-	log.Printf("Saving files to %s", color.CyanString(*path))
+	log.Printf("Starting server on %s", color.CyanString(listen))
+	log.Printf("Saving files to %s", color.CyanString(path))
+
 	log.Fatal(s.ListenAndServe())
+}
+
+func errorResponse(w http.ResponseWriter, message string, httpStatusCode int) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(httpStatusCode)
+	resp := make(map[string]string)
+	resp["message"] = message
+	jsonResp, _ := json.Marshal(resp)
+	w.Write(jsonResp)
 }
 
 type ProgressWriter struct {
@@ -128,6 +144,11 @@ type ProgressWriter struct {
 	BytesWritten int64
 	Bar          *uiprogress.Bar
 	io.Writer
+}
+
+type RowsData struct {
+	FechaPubPadron string `json:"FechaPubPadron"`
+	CantRegistros  string `json:"CantRegistros"`
 }
 
 func (writer *ProgressWriter) Write(bytes []byte) (int, error) {
@@ -145,16 +166,15 @@ func (writer *ProgressWriter) Write(bytes []byte) (int, error) {
 	return n, err
 }
 
-// inicia el estado de la subida en la progress.Bar
 func (writer *ProgressWriter) Prepend() func(*uiprogress.Bar) string {
 	return func(bar *uiprogress.Bar) string {
 		return writer.FileName
 	}
 }
 
-// actualiza el estado de la subida
 func (writer *ProgressWriter) Append() func(*uiprogress.Bar) string {
 	total := byteUnitStr(writer.Length)
+
 	return func(bar *uiprogress.Bar) string {
 		completed := byteUnitStr(writer.BytesWritten)
 		return bar.CompletedPercentString() + " " + completed + "/" + total
@@ -163,7 +183,7 @@ func (writer *ProgressWriter) Append() func(*uiprogress.Bar) string {
 
 var byteUnits = []string{"B", "KB", "MB", "GB", "TB", "PB"}
 
-// define cual es la unidad ya subida del archivo a subir (B / KB / MB / GB)
+// https://github.com/mitchellh/ioprogress/blob/master/draw.go#L91
 func byteUnitStr(n int64) string {
 	var unit string
 	size := float64(n)
@@ -177,4 +197,40 @@ func byteUnitStr(n int64) string {
 	}
 
 	return fmt.Sprintf("%.3g %s", size, unit)
+}
+
+func Inicio(w http.ResponseWriter, r *http.Request) {
+	if len(bks) == 0 {
+		GetInfoRows(w, r)
+	}
+	plantillas.ExecuteTemplate(w, "inicio", bks)
+}
+
+func GetInfoRows(w http.ResponseWriter, r *http.Request) {
+
+	if r.Method != "GET" {
+		http.Error(w, http.StatusText(405), 405)
+		return
+	}
+
+	rows, err := infra.DbPayment.Query("SELECT FechaPubPadron, COUNT(FechaPubPadron) as CantReg FROM [Facthos].[dbo].[IIBBPadronBsAs] group by FechaPubPadron")
+	if err != nil {
+		http.Error(w, http.StatusText(500), 500)
+		return
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		bk := new(RowsData)
+		err := rows.Scan(&bk.FechaPubPadron, &bk.CantRegistros)
+		if err != nil {
+			http.Error(w, http.StatusText(500), 500)
+			return
+		}
+		bks = append(bks, bk)
+	}
+	if err = rows.Err(); err != nil {
+		http.Error(w, http.StatusText(500), 500)
+		return
+	}
 }
