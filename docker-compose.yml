@@ -1,0 +1,33 @@
+version: '3'
+services:
+  api-notification-payment:
+    container_name: ${CONTAINER_NAME}
+    image: ${IMAGEN_NAME}
+    labels:
+      com.centurylinklabs.watchtower.enable: "true"
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      X_API_KEY: ${X_API_KEY}
+      DSN: ${DSN}
+      DB_DRIVER: ${DB_DRIVER}
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_HOST: ${DB_HOST}
+      DB_INSTANCE: ${DB_INSTANCE}
+      DB_DATABASE: ${DB_DATABASE}
+      DB_ENCRYPT: ${DB_ENCRYPT}
+      API_PORT: ${API_PORT}
+      GIN_MODE: ${GIN_MODE}
+      PATH_UPLOADS: ${PATH_UPLOADS}
+    ports:
+      - 3000:3000
+    # restart: always
+    # network_mode: "host"
+    # dns: 172.16.1.4
+    dns_search: fleni.org.ar
+    volumes:
+      - /srv/iibb-front-import-process/uploads:${PATH_UPLOADS}
+      - /etc/localtime:/etc/localtime:ro  # Para syncronizar el clock del contenedor con el del host
+      - /etc/timezone:/etc/timezone:ro    # Para syncronizar el clock del contenedor con el del host

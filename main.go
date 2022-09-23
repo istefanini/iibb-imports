@@ -9,18 +9,22 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
+	"strings"
 	"text/template"
 	"time"
 
 	rice "github.com/GeertJohan/go.rice"
 	"github.com/fatih/color"
+	go_iibb "github.com/fleni/go-iibb"
+	"github.com/fleni/go-iibb/mssql"
 	"github.com/gosuri/uiprogress"
 	"github.com/subosito/gotenv"
 )
 
-var plantillas = template.Must(template.ParseGlob("frontend/*"))
+var templates = template.Must(template.ParseGlob("frontend/*"))
 
-var bks = make([]*RowsData, 0)
+var rowsTABLE = make([]*RowsData, 0)
 
 var (
 	listen          = ":" + os.Getenv("API_PORT")
@@ -32,8 +36,8 @@ var (
 var bars *uiprogress.Progress
 
 func init() {
-	bks := make([]RowsData, 0)
-	fmt.Println(bks)
+	rowsTABLE := make([]RowsData, 0)
+	fmt.Println(rowsTABLE)
 	_ = gotenv.Load(".env")
 	listen = ":" + os.Getenv("API_PORT")
 	path = os.Getenv("PATH_UPLOADS")
@@ -71,12 +75,21 @@ func main() {
 	mux.Handle("/", http.FileServer(staticFiles))
 	mux.HandleFunc("/healthcheck", infra.Healthcheck)
 	mux.HandleFunc("/inicio", Inicio)
+	mux.HandleFunc("/verImports", verImports)
+	// mux.HandleFunc("/importTxt", importTxt)
 	mux.HandleFunc("/send", func(rw http.ResponseWriter, r *http.Request) {
 		defer r.Body.Close()
 
 		fileName := r.Header.Get("X-File-Name")
 		if fileName == "" {
 			log.Printf(color.RedString("File name not provided"))
+			rw.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		fileExtension := filepath.Ext(fileName)
+		if fileExtension != ".txt" && fileExtension != ".TXT" {
+			log.Printf(color.RedString("no es un archivo txt"))
 			rw.WriteHeader(http.StatusBadRequest)
 			return
 		}
@@ -104,6 +117,9 @@ func main() {
 		if err != nil {
 			log.Printf(color.RedString("Failed to copy file: %v"), err)
 			rw.WriteHeader(http.StatusInternalServerError)
+			return
+		} else {
+			cargarDatos(fileName)
 			return
 		}
 
@@ -138,6 +154,29 @@ func errorResponse(w http.ResponseWriter, message string, httpStatusCode int) {
 	w.Write(jsonResp)
 }
 
+func cargarDatos(fileName string) {
+	infra.SqlConf = &infra.DBData{
+		DB_DRIVER:   os.Getenv("DB_DRIVER"),
+		DB_USER:     os.Getenv("DB_USERNAME"),
+		DB_PASSWORD: os.Getenv("DB_PASSWORD"),
+		DB_HOST:     os.Getenv("DB_HOST"),
+		DB_INSTANCE: os.Getenv("DB_INSTANCE"),
+		DB_DATABASE: os.Getenv("DB_DATABASE"),
+		DB_ENCRYPT:  os.Getenv("DB_ENCRYPT"),
+	}
+	dbsetup := mssql.DBSetup{}
+	dbsetup.SetDbSetup(os.Getenv("DB_HOST_DV"), infra.SqlConf.DB_USER, infra.SqlConf.DB_PASSWORD, 56, infra.SqlConf.DB_DATABASE, 1500)
+	if strings.Contains(fileName, "PadronGral") {
+		ch := make(chan go_iibb.CaBa)
+		go go_iibb.ProcFileCaba("PadronGralAgosto2022.txt", ch)
+		mssql.BulkIibbCaba(ch, 200000)
+	} else if strings.Contains(fileName, "PadronRGSPer") {
+		chbs := make(chan go_iibb.BsAs)
+		go go_iibb.ProcFileBsas("PadronRGSPer082022.TXT", chbs)
+		mssql.BulkIibbBsas(chbs, 200000)
+	}
+}
+
 type ProgressWriter struct {
 	Length       int64
 	FileName     string
@@ -147,8 +186,10 @@ type ProgressWriter struct {
 }
 
 type RowsData struct {
-	FechaPubPadron string `json:"FechaPubPadron"`
-	CantRegistros  string `json:"CantRegistros"`
+	FechaPubPadronBsAs string `json:"FechaPubPadron"`
+	CantRegistrosBsAs  string `json:"CantRegistros"`
+	FechaPubPadronCABA string `json:"FechaPubPadron"`
+	CantRegistrosCABA  string `json:"CantRegistros"`
 }
 
 func (writer *ProgressWriter) Write(bytes []byte) (int, error) {
@@ -183,7 +224,6 @@ func (writer *ProgressWriter) Append() func(*uiprogress.Bar) string {
 
 var byteUnits = []string{"B", "KB", "MB", "GB", "TB", "PB"}
 
-// https://github.com/mitchellh/ioprogress/blob/master/draw.go#L91
 func byteUnitStr(n int64) string {
 	var unit string
 	size := float64(n)
@@ -200,10 +240,14 @@ func byteUnitStr(n int64) string {
 }
 
 func Inicio(w http.ResponseWriter, r *http.Request) {
-	if len(bks) == 0 {
+	if len(rowsTABLE) == 0 {
 		GetInfoRows(w, r)
 	}
-	plantillas.ExecuteTemplate(w, "inicio", bks)
+	templates.ExecuteTemplate(w, "inicio", nil)
+}
+
+func verImports(w http.ResponseWriter, r *http.Request) {
+	templates.ExecuteTemplate(w, "tablas", rowsTABLE)
 }
 
 func GetInfoRows(w http.ResponseWriter, r *http.Request) {
@@ -213,7 +257,28 @@ func GetInfoRows(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rows, err := infra.DbPayment.Query("SELECT FechaPubPadron, COUNT(FechaPubPadron) as CantReg FROM [Facthos].[dbo].[IIBBPadronBsAs] group by FechaPubPadron")
+	rowsCABA, err := infra.DbPayment.Query("SELECT FechaPubPadron, COUNT(FechaPubPadron) as CantReg FROM [FacthosHist].[dbo].[IIBBPadronRSCF] group by FechaPubPadron")
+	if err != nil {
+		http.Error(w, http.StatusText(500), 500)
+		return
+	}
+	defer rowsCABA.Close()
+
+	for rowsCABA.Next() {
+		bk := new(RowsData)
+		err := rowsCABA.Scan(&bk.FechaPubPadronCABA, &bk.CantRegistrosCABA)
+		if err != nil {
+			http.Error(w, http.StatusText(500), 500)
+			return
+		}
+		rowsTABLE = append(rowsTABLE, bk)
+	}
+	if err = rowsCABA.Err(); err != nil {
+		http.Error(w, http.StatusText(500), 500)
+		return
+	}
+
+	rows, err := infra.DbPayment.Query("SELECT FechaPubPadron, COUNT(FechaPubPadron) as CantReg FROM [FacthosHist].[dbo].[IIBBPadronBsAs] group by FechaPubPadron")
 	if err != nil {
 		http.Error(w, http.StatusText(500), 500)
 		return
@@ -222,12 +287,12 @@ func GetInfoRows(w http.ResponseWriter, r *http.Request) {
 
 	for rows.Next() {
 		bk := new(RowsData)
-		err := rows.Scan(&bk.FechaPubPadron, &bk.CantRegistros)
+		err := rows.Scan(&bk.FechaPubPadronBsAs, &bk.CantRegistrosBsAs)
 		if err != nil {
 			http.Error(w, http.StatusText(500), 500)
 			return
 		}
-		bks = append(bks, bk)
+		rowsTABLE = append(rowsTABLE, bk)
 	}
 	if err = rows.Err(); err != nil {
 		http.Error(w, http.StatusText(500), 500)
